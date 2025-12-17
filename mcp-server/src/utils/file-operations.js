@@ -16,6 +16,7 @@ import { join } from 'path';
 
 /**
  * Save deliverable file to deliverables/ directory
+ * If a run ID is set, saves to deliverables/runs/{runId}/
  *
  * @param {string} filename - Name of the file to save
  * @param {string} content - Content to write to the file
@@ -24,7 +25,18 @@ import { join } from 'path';
 export function saveDeliverableFile(filename, content) {
   // Use target directory from global context (set by createShannonHelperServer)
   const targetDir = global.__SHANNON_TARGET_DIR || process.cwd();
-  const deliverablesDir = join(targetDir, 'deliverables');
+  const runId = global.__SHANNON_RUN_ID;
+
+  // Determine deliverables directory based on whether run ID is set
+  let deliverablesDir;
+  if (runId) {
+    // Timestamped run structure: deliverables/runs/{runId}/
+    deliverablesDir = join(targetDir, 'deliverables', 'runs', runId);
+  } else {
+    // Legacy flat structure: deliverables/
+    deliverablesDir = join(targetDir, 'deliverables');
+  }
+
   const filepath = join(deliverablesDir, filename);
 
   // Ensure deliverables directory exists
@@ -38,4 +50,18 @@ export function saveDeliverableFile(filename, content) {
   writeFileSync(filepath, content, 'utf8');
 
   return filepath;
+}
+
+/**
+ * Get the current deliverables directory path
+ * @returns {string} Path to the deliverables directory
+ */
+export function getDeliverablesDir() {
+  const targetDir = global.__SHANNON_TARGET_DIR || process.cwd();
+  const runId = global.__SHANNON_RUN_ID;
+
+  if (runId) {
+    return join(targetDir, 'deliverables', 'runs', runId);
+  }
+  return join(targetDir, 'deliverables');
 }

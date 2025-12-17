@@ -21,11 +21,13 @@ import { generateTotpTool } from './tools/generate-totp.js';
  * Create Shannon Helper MCP Server with target directory context
  *
  * @param {string} targetDir - The target repository directory where deliverables should be saved
+ * @param {string} runId - Optional run ID for timestamped directory structure
  * @returns {Object} MCP server instance
  */
-export function createShannonHelperServer(targetDir) {
-  // Store target directory for tool access
+export function createShannonHelperServer(targetDir, runId = null) {
+  // Store target directory and run ID for tool access
   global.__SHANNON_TARGET_DIR = targetDir;
+  global.__SHANNON_RUN_ID = runId;
 
   return createSdkMcpServer({
     name: 'shannon-helper',

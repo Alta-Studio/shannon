@@ -27,6 +27,7 @@ export function showHelp() {
 
   console.log(chalk.yellow.bold('OPTIONS:'));
   console.log('  --config <file>      YAML configuration file for authentication and testing parameters');
+  console.log('  --run-id <id>        Custom run identifier (defaults to timestamp, e.g., 2024-12-17_143022)');
   console.log('  --pipeline-testing   Use minimal prompts for fast pipeline testing (creates minimal deliverables)');
   console.log('  --disable-loader     Disable the animated progress loader (useful when logs interfere with spinner)');
   console.log('  --no-git-commits     Disable git checkpoint commits in the target repo (prevents polluting git history)\n');

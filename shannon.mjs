@@ -353,9 +353,31 @@ async function main(webUrl, repoPath, configPath = null, pipelineTestingMode = f
   // Calculate audit logs path
   const auditLogsPath = generateAuditPath(session);
 
+  // Determine deliverables path based on run ID
+  const runId = global.SHANNON_RUN_ID;
+  let deliverablesPath;
+  if (runId) {
+    deliverablesPath = path.join(sourceDir, 'deliverables', 'runs', runId);
+
+    // Create 'latest' symlink pointing to this run
+    const latestLink = path.join(sourceDir, 'deliverables', 'latest');
+    const runsDir = path.join(sourceDir, 'deliverables', 'runs', runId);
+    try {
+      // Remove existing symlink if it exists
+      await fs.remove(latestLink);
+      // Create relative symlink: latest -> runs/{runId}
+      await fs.symlink(`runs/${runId}`, latestLink);
+      console.log(chalk.green(`✅ Created 'latest' symlink → runs/${runId}`));
+    } catch (symlinkError) {
+      console.log(chalk.yellow(`⚠️ Failed to create 'latest' symlink: ${symlinkError.message}`));
+    }
+  } else {
+    deliverablesPath = path.join(sourceDir, 'deliverables');
+  }
+
   // Return final report path and audit logs path for clickable output
   return {
-    reportPath: path.join(sourceDir, 'deliverables', 'comprehensive_security_assessment_report.md'),
+    reportPath: path.join(deliverablesPath, 'comprehensive_security_assessment_report.md'),
     auditLogsPath
   };
 }
@@ -372,6 +394,7 @@ let configPath = null;
 let pipelineTestingMode = false;
 let disableLoader = false;
 let noGitCommits = false;
+let runId = null;
 const nonFlagArgs = [];
 let developerCommand = null;
 const developerCommands = ['--run-phase', '--run-all', '--rollback-to', '--rerun', '--status', '--list-agents', '--cleanup', '--validate'];
@@ -391,10 +414,18 @@ for (let i = 0; i < args.length; i++) {
     disableLoader = true;
   } else if (args[i] === '--no-git-commits') {
     noGitCommits = true;
+  } else if (args[i] === '--run-id') {
+    if (i + 1 < args.length) {
+      runId = args[i + 1];
+      i++; // Skip the next argument
+    } else {
+      console.log(chalk.red('❌ --run-id flag requires a value'));
+      process.exit(1);
+    }
   } else if (developerCommands.includes(args[i])) {
     developerCommand = args[i];
     // Collect remaining args for the developer command
-    const remainingArgs = args.slice(i + 1).filter(arg => !arg.startsWith('--') || arg === '--pipeline-testing' || arg === '--disable-loader' || arg === '--no-git-commits');
+    const remainingArgs = args.slice(i + 1);
 
     // Check for --pipeline-testing in remaining args
     if (remainingArgs.includes('--pipeline-testing')) {
@@ -411,8 +442,25 @@ for (let i = 0; i < args.length; i++) {
       noGitCommits = true;
     }
 
-    // Add non-flag args (excluding flags)
-    nonFlagArgs.push(...remainingArgs.filter(arg => arg !== '--pipeline-testing' && arg !== '--disable-loader' && arg !== '--no-git-commits'));
+    // Check for --run-id in remaining args
+    const runIdIndex = remainingArgs.indexOf('--run-id');
+    if (runIdIndex !== -1 && runIdIndex + 1 < remainingArgs.length) {
+      runId = remainingArgs[runIdIndex + 1];
+    }
+
+    // Add non-flag args (excluding all known flags and their values)
+    const knownFlags = ['--pipeline-testing', '--disable-loader', '--no-git-commits', '--run-id'];
+    for (let j = 0; j < remainingArgs.length; j++) {
+      const arg = remainingArgs[j];
+      if (knownFlags.includes(arg)) {
+        // Skip --run-id's value
+        if (arg === '--run-id') j++;
+        continue;
+      }
+      if (!arg.startsWith('--')) {
+        nonFlagArgs.push(arg);
+      }
+    }
     break; // Stop parsing after developer command
   } else if (!args[i].startsWith('-')) {
     nonFlagArgs.push(args[i]);
@@ -430,6 +478,14 @@ if (developerCommand) {
   // Set global flags for developer mode too
   global.SHANNON_DISABLE_LOADER = disableLoader;
   global.SHANNON_NO_GIT_COMMITS = noGitCommits;
+
+  // Generate run ID for developer commands if not provided
+  // This ensures deliverables go to timestamped directories
+  if (!runId) {
+    const now = new Date();
+    runId = now.toISOString().replace(/T/, '_').replace(/[:.]/g, '-').slice(0, 19);
+  }
+  global.SHANNON_RUN_ID = runId;
 
   await handleDeveloperCommand(developerCommand, nonFlagArgs, pipelineTestingMode, runClaudePromptWithRetry, loadPrompt);
 
@@ -484,8 +540,17 @@ if (noGitCommits) {
   console.log(chalk.yellow('🚫 GIT COMMITS DISABLED - No checkpoint commits will be created in the target repo\n'));
 }
 
-// Set global flag for git commits
+// Generate default run ID (timestamp) if not provided
+if (!runId) {
+  const now = new Date();
+  runId = now.toISOString().replace(/T/, '_').replace(/[:.]/g, '-').slice(0, 19);
+}
+console.log(chalk.blue(`📂 Run ID: ${runId}`));
+console.log(chalk.gray(`   Deliverables will be saved to: deliverables/runs/${runId}/\n`));
+
+// Set global flags
 global.SHANNON_NO_GIT_COMMITS = noGitCommits;
+global.SHANNON_RUN_ID = runId;
 
 try {
   const result = await main(webUrl, repoPathValidation.path, configPath, pipelineTestingMode, disableLoader);

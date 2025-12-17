@@ -140,8 +140,8 @@ async function runClaudePrompt(prompt, sourceDir, allowedTools = 'Read', context
   let turnCount = 0;
 
   try {
-    // Create MCP server with target directory context
-    const shannonHelperServer = createShannonHelperServer(sourceDir);
+    // Create MCP server with target directory and run ID context
+    const shannonHelperServer = createShannonHelperServer(sourceDir, global.SHANNON_RUN_ID);
 
     // Look up agent's assigned Playwright MCP server
     // Convert agent name (e.g., 'xss-vuln') to prompt name (e.g., 'vuln-xss')
