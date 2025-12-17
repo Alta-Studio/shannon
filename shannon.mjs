@@ -371,6 +371,7 @@ if (args[0] && args[0].includes('shannon.mjs')) {
 let configPath = null;
 let pipelineTestingMode = false;
 let disableLoader = false;
+let noGitCommits = false;
 const nonFlagArgs = [];
 let developerCommand = null;
 const developerCommands = ['--run-phase', '--run-all', '--rollback-to', '--rerun', '--status', '--list-agents', '--cleanup'];
@@ -388,10 +389,12 @@ for (let i = 0; i < args.length; i++) {
     pipelineTestingMode = true;
   } else if (args[i] === '--disable-loader') {
     disableLoader = true;
+  } else if (args[i] === '--no-git-commits') {
+    noGitCommits = true;
   } else if (developerCommands.includes(args[i])) {
     developerCommand = args[i];
     // Collect remaining args for the developer command
-    const remainingArgs = args.slice(i + 1).filter(arg => !arg.startsWith('--') || arg === '--pipeline-testing' || arg === '--disable-loader');
+    const remainingArgs = args.slice(i + 1).filter(arg => !arg.startsWith('--') || arg === '--pipeline-testing' || arg === '--disable-loader' || arg === '--no-git-commits');
 
     // Check for --pipeline-testing in remaining args
     if (remainingArgs.includes('--pipeline-testing')) {
@@ -403,8 +406,13 @@ for (let i = 0; i < args.length; i++) {
       disableLoader = true;
     }
 
-    // Add non-flag args (excluding --pipeline-testing and --disable-loader)
-    nonFlagArgs.push(...remainingArgs.filter(arg => arg !== '--pipeline-testing' && arg !== '--disable-loader'));
+    // Check for --no-git-commits in remaining args
+    if (remainingArgs.includes('--no-git-commits')) {
+      noGitCommits = true;
+    }
+
+    // Add non-flag args (excluding flags)
+    nonFlagArgs.push(...remainingArgs.filter(arg => arg !== '--pipeline-testing' && arg !== '--disable-loader' && arg !== '--no-git-commits'));
     break; // Stop parsing after developer command
   } else if (!args[i].startsWith('-')) {
     nonFlagArgs.push(args[i]);
@@ -419,8 +427,9 @@ if (args.includes('--help') || args.includes('-h') || args.includes('help')) {
 
 // Handle developer commands
 if (developerCommand) {
-  // Set global flag for loader control in developer mode too
+  // Set global flags for developer mode too
   global.SHANNON_DISABLE_LOADER = disableLoader;
+  global.SHANNON_NO_GIT_COMMITS = noGitCommits;
 
   await handleDeveloperCommand(developerCommand, nonFlagArgs, pipelineTestingMode, runClaudePromptWithRetry, loadPrompt);
 
@@ -471,6 +480,12 @@ if (pipelineTestingMode) {
 if (disableLoader) {
   console.log(chalk.yellow('⚙️  LOADER DISABLED - Progress indicator will not be shown\n'));
 }
+if (noGitCommits) {
+  console.log(chalk.yellow('🚫 GIT COMMITS DISABLED - No checkpoint commits will be created in the target repo\n'));
+}
+
+// Set global flag for git commits
+global.SHANNON_NO_GIT_COMMITS = noGitCommits;
 
 try {
   const result = await main(webUrl, repoPathValidation.path, configPath, pipelineTestingMode, disableLoader);

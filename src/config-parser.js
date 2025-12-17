@@ -184,18 +184,19 @@ const performSecurityValidation = (config) => {
 // Validate rules for security issues
 const validateRulesSecurity = (rules, ruleType) => {
   if (!rules) return;
-  
+
   rules.forEach((rule, index) => {
     // Security validation
     for (const pattern of DANGEROUS_PATTERNS) {
-      if (pattern.test(rule.url_path)) {
+      // url_path is optional for instruction type
+      if (rule.url_path && pattern.test(rule.url_path)) {
         throw new Error(`rules.${ruleType}[${index}].url_path contains potentially dangerous pattern: ${pattern.source}`);
       }
       if (pattern.test(rule.description)) {
         throw new Error(`rules.${ruleType}[${index}].description contains potentially dangerous pattern: ${pattern.source}`);
       }
     }
-    
+
     // Type-specific validation
     validateRuleTypeSpecific(rule, ruleType, index);
   });
@@ -242,6 +243,11 @@ const validateRuleTypeSpecific = (rule, ruleType, index) => {
         throw new Error(`rules.${ruleType}[${index}].url_path for type 'parameter' must be a valid parameter name (alphanumeric, hyphens, underscores only)`);
       }
       break;
+
+    case 'instruction':
+      // Instruction type requires no url_path validation - it's purely description-based
+      // The description field carries all the guidance for the AI agent
+      break;
   }
 };
 
@@ -249,9 +255,13 @@ const validateRuleTypeSpecific = (rule, ruleType, index) => {
 const checkForDuplicates = (rules, ruleType) => {
   const seen = new Set();
   rules.forEach((rule, index) => {
-    const key = `${rule.type}:${rule.url_path}`;
+    // For instruction type, use description as the key since there's no url_path
+    const key = rule.type === 'instruction'
+      ? `instruction:${rule.description}`
+      : `${rule.type}:${rule.url_path}`;
     if (seen.has(key)) {
-      throw new Error(`Duplicate rule found in rules.${ruleType}[${index}]: ${rule.type} '${rule.url_path}'`);
+      const displayValue = rule.type === 'instruction' ? rule.description : rule.url_path;
+      throw new Error(`Duplicate rule found in rules.${ruleType}[${index}]: ${rule.type} '${displayValue}'`);
     }
     seen.add(key);
   });
@@ -259,23 +269,32 @@ const checkForDuplicates = (rules, ruleType) => {
 
 // Check for conflicting rules between avoid and focus
 const checkForConflicts = (avoidRules = [], focusRules = []) => {
-  const avoidSet = new Set(avoidRules.map(rule => `${rule.type}:${rule.url_path}`));
-  
+  const avoidSet = new Set(avoidRules.map(rule =>
+    rule.type === 'instruction' ? `instruction:${rule.description}` : `${rule.type}:${rule.url_path}`
+  ));
+
   focusRules.forEach((rule, index) => {
-    const key = `${rule.type}:${rule.url_path}`;
+    const key = rule.type === 'instruction'
+      ? `instruction:${rule.description}`
+      : `${rule.type}:${rule.url_path}`;
     if (avoidSet.has(key)) {
-      throw new Error(`Conflicting rule found: rules.focus[${index}] '${rule.url_path}' also exists in rules.avoid`);
+      const displayValue = rule.type === 'instruction' ? rule.description : rule.url_path;
+      throw new Error(`Conflicting rule found: rules.focus[${index}] '${displayValue}' also exists in rules.avoid`);
     }
   });
 };
 
 // Sanitize and normalize rule values
 const sanitizeRule = (rule) => {
-  return {
+  const sanitized = {
     description: rule.description.trim(),
-    type: rule.type.toLowerCase().trim(),
-    url_path: rule.url_path.trim()
+    type: rule.type.toLowerCase().trim()
   };
+  // url_path is optional for instruction type
+  if (rule.url_path) {
+    sanitized.url_path = rule.url_path.trim();
+  }
+  return sanitized;
 };
 
 // Distribute configuration sections to different agents with sanitization

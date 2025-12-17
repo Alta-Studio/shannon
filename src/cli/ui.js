@@ -28,7 +28,8 @@ export function showHelp() {
   console.log(chalk.yellow.bold('OPTIONS:'));
   console.log('  --config <file>      YAML configuration file for authentication and testing parameters');
   console.log('  --pipeline-testing   Use minimal prompts for fast pipeline testing (creates minimal deliverables)');
-  console.log('  --disable-loader     Disable the animated progress loader (useful when logs interfere with spinner)\n');
+  console.log('  --disable-loader     Disable the animated progress loader (useful when logs interfere with spinner)');
+  console.log('  --no-git-commits     Disable git checkpoint commits in the target repo (prevents polluting git history)\n');
 
   console.log(chalk.yellow.bold('DEVELOPER COMMANDS:'));
   console.log('  --run-phase          Run all agents in a phase (parallel execution for 5x speedup)');

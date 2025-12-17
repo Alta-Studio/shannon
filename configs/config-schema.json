@@ -126,17 +126,23 @@
         },
         "type": {
           "type": "string",
-          "enum": ["path", "subdomain", "domain", "method", "header", "parameter"],
-          "description": "Type of rule (what aspect of requests to match against)"
+          "enum": ["path", "subdomain", "domain", "method", "header", "parameter", "instruction"],
+          "description": "Type of rule (what aspect of requests to match against, or 'instruction' for general behavioral guidance)"
         },
         "url_path": {
           "type": "string",
           "minLength": 1,
           "maxLength": 1000,
-          "description": "URL path pattern or value to match"
+          "description": "URL path pattern or value to match (not required for 'instruction' type)"
         }
       },
-      "required": ["description", "type", "url_path"],
+      "required": ["description", "type"],
+      "if": {
+        "properties": { "type": { "not": { "const": "instruction" } } }
+      },
+      "then": {
+        "required": ["url_path"]
+      },
       "additionalProperties": false
     }
   }

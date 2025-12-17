@@ -109,6 +109,12 @@ const cleanWorkspace = async (sourceDir, reason = 'clean start') => {
 };
 
 export const createGitCheckpoint = async (sourceDir, description, attempt) => {
+  // Skip git operations if disabled via CLI flag
+  if (global.SHANNON_NO_GIT_COMMITS) {
+    console.log(chalk.gray(`    📍 Skipping checkpoint (git commits disabled)`));
+    return { success: true, skipped: true };
+  }
+
   console.log(chalk.blue(`    📍 Creating checkpoint for ${description} (attempt ${attempt})`));
   try {
     // Only clean workspace on retry attempts (attempt > 1), not on first attempts
@@ -143,6 +149,12 @@ export const createGitCheckpoint = async (sourceDir, description, attempt) => {
 };
 
 export const commitGitSuccess = async (sourceDir, description) => {
+  // Skip git operations if disabled via CLI flag
+  if (global.SHANNON_NO_GIT_COMMITS) {
+    console.log(chalk.gray(`    💾 Skipping success commit (git commits disabled)`));
+    return { success: true, skipped: true };
+  }
+
   console.log(chalk.green(`    💾 Committing successful results for ${description}`));
   try {
     // Check what we're about to commit with retry logic
