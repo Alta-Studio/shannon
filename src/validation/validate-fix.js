@@ -42,21 +42,31 @@ export function parseVulnId(vulnId) {
 }
 
 /**
- * Get the deliverables directory path, preferring 'latest' symlink if it exists
+ * Get the deliverables directory path
+ * Priority: 1) --run-id flag, 2) 'latest' symlink, 3) flat structure
  * @param {string} sourceDir - target repository path
  * @returns {Promise<string>}
  */
 async function getDeliverablesPath(sourceDir) {
-  const latestPath = path.join(sourceDir, 'deliverables', 'latest');
-  const flatPath = path.join(sourceDir, 'deliverables');
+  // If a specific run ID was provided via --run-id flag, use that
+  const runId = global.SHANNON_RUN_ID;
+  if (runId) {
+    const runPath = path.join(sourceDir, 'deliverables', 'runs', runId);
+    if (await fs.pathExists(runPath)) {
+      return runPath;
+    }
+    // Run ID specified but doesn't exist - warn and fall through
+    console.log(chalk.yellow(`⚠️ Run ID '${runId}' not found, falling back to latest`));
+  }
 
   // Check if 'latest' symlink exists (new timestamped structure)
+  const latestPath = path.join(sourceDir, 'deliverables', 'latest');
   if (await fs.pathExists(latestPath)) {
     return latestPath;
   }
 
   // Fall back to flat structure for backwards compatibility
-  return flatPath;
+  return path.join(sourceDir, 'deliverables');
 }
 
 /**
@@ -205,9 +215,42 @@ export async function displayVulnerabilityList(sourceDir) {
  * Generate a focused validation prompt for a single vulnerability
  * @param {Object} vuln - vulnerability object from queue
  * @param {string} webUrl - target web URL
+ * @param {Object} config - optional distributed config with auth info
  * @returns {string} prompt text
  */
-export function generateValidationPrompt(vuln, webUrl) {
+export function generateValidationPrompt(vuln, webUrl, config = null) {
+  // Build authentication section if config provided
+  let authSection = '';
+  if (config && config.authentication) {
+    const auth = config.authentication;
+    authSection = `
+## Authentication
+
+You MUST authenticate before testing. Use these credentials:
+`;
+    if (auth.test_credentials) {
+      authSection += `- **Username/Email**: ${auth.test_credentials.username || auth.test_credentials.email}
+- **Password**: ${auth.test_credentials.password}
+`;
+    }
+    if (auth.login_url) {
+      authSection += `- **Login URL**: ${auth.login_url}
+`;
+    }
+    if (auth.login_flow_instructions) {
+      authSection += `
+### Login Instructions
+${auth.login_flow_instructions}
+`;
+    }
+    if (auth.totp_secret) {
+      authSection += `
+### MFA/TOTP
+If prompted for MFA, use the \`generate_totp\` tool to generate a one-time code.
+`;
+    }
+  }
+
   return `# Vulnerability Fix Validation
 
 ## Objective
@@ -217,7 +260,7 @@ You are validating whether a SPECIFIC vulnerability has been fixed. Your ONLY ta
 - **Web URL**: ${webUrl}
 - **Vulnerability ID**: ${vuln.ID}
 - **Type**: ${vuln.vulnerability_type || vuln._type}
-
+${authSection}
 ## Vulnerability Details
 \`\`\`json
 ${JSON.stringify(vuln, null, 2)}
@@ -225,10 +268,11 @@ ${JSON.stringify(vuln, null, 2)}
 
 ## Instructions
 
-1. **Navigate** to the vulnerable endpoint/page
-2. **Reproduce** the vulnerability using the witness payload or similar test
-3. **Observe** whether the vulnerability still triggers
-4. **Document** your findings
+1. **Authenticate** using the credentials above (if provided)
+2. **Navigate** to the vulnerable endpoint/page
+3. **Reproduce** the vulnerability using the witness payload or similar test
+4. **Observe** whether the vulnerability still triggers
+5. **Document** your findings
 
 ## Success Criteria
 - If the vulnerability NO LONGER triggers: Report as **FIXED**

@@ -395,6 +395,8 @@ let pipelineTestingMode = false;
 let disableLoader = false;
 let noGitCommits = false;
 let runId = null;
+let devRepoPath = null;  // For developer commands when no session exists
+let devWebUrl = null;    // For developer commands when no session exists
 const nonFlagArgs = [];
 let developerCommand = null;
 const developerCommands = ['--run-phase', '--run-all', '--rollback-to', '--rerun', '--status', '--list-agents', '--cleanup', '--validate'];
@@ -448,18 +450,35 @@ for (let i = 0; i < args.length; i++) {
       runId = remainingArgs[runIdIndex + 1];
     }
 
-    // Add non-flag args (excluding all known flags and their values)
-    const knownFlags = ['--pipeline-testing', '--disable-loader', '--no-git-commits', '--run-id'];
+    // Check for --repo in remaining args (for commands when no session exists)
+    const repoIndex = remainingArgs.indexOf('--repo');
+    if (repoIndex !== -1 && repoIndex + 1 < remainingArgs.length) {
+      devRepoPath = remainingArgs[repoIndex + 1];
+    }
+
+    // Check for --url in remaining args (for commands when no session exists)
+    const urlIndex = remainingArgs.indexOf('--url');
+    if (urlIndex !== -1 && urlIndex + 1 < remainingArgs.length) {
+      devWebUrl = remainingArgs[urlIndex + 1];
+    }
+
+    // Check for --config in remaining args (for validation with auth)
+    const configIndex = remainingArgs.indexOf('--config');
+    if (configIndex !== -1 && configIndex + 1 < remainingArgs.length) {
+      configPath = remainingArgs[configIndex + 1];
+    }
+
+    // Add args for the developer command (excluding known global flags)
+    const knownFlags = ['--pipeline-testing', '--disable-loader', '--no-git-commits', '--run-id', '--repo', '--url', '--config'];
     for (let j = 0; j < remainingArgs.length; j++) {
       const arg = remainingArgs[j];
       if (knownFlags.includes(arg)) {
-        // Skip --run-id's value
-        if (arg === '--run-id') j++;
+        // Skip flag values for --run-id, --repo, --url, and --config
+        if (arg === '--run-id' || arg === '--repo' || arg === '--url' || arg === '--config') j++;
         continue;
       }
-      if (!arg.startsWith('--')) {
-        nonFlagArgs.push(arg);
-      }
+      // Pass through all other args (including --list for --validate)
+      nonFlagArgs.push(arg);
     }
     break; // Stop parsing after developer command
   } else if (!args[i].startsWith('-')) {
@@ -479,15 +498,37 @@ if (developerCommand) {
   global.SHANNON_DISABLE_LOADER = disableLoader;
   global.SHANNON_NO_GIT_COMMITS = noGitCommits;
 
-  // Generate run ID for developer commands if not provided
-  // This ensures deliverables go to timestamped directories
-  if (!runId) {
+  // For commands that READ data (--validate, --status, --list-agents), don't auto-generate run ID
+  // This allows them to use 'latest' symlink by default
+  // For commands that WRITE data (--run-phase, --run-all, --rerun), generate a run ID
+  const readOnlyCommands = ['--validate', '--status', '--list-agents', '--cleanup'];
+  if (!runId && !readOnlyCommands.includes(developerCommand)) {
     const now = new Date();
     runId = now.toISOString().replace(/T/, '_').replace(/[:.]/g, '-').slice(0, 19);
   }
-  global.SHANNON_RUN_ID = runId;
+  global.SHANNON_RUN_ID = runId || null;
 
-  await handleDeveloperCommand(developerCommand, nonFlagArgs, pipelineTestingMode, runClaudePromptWithRetry, loadPrompt);
+  // Parse config if provided (for auth info in validation)
+  let distributedConfig = null;
+  if (configPath) {
+    try {
+      let resolvedConfigPath = configPath;
+      if (!path.isAbsolute(configPath)) {
+        const configsDir = path.join(process.cwd(), 'configs');
+        const configInConfigsDir = path.join(configsDir, configPath);
+        if (await fs.pathExists(configInConfigsDir)) {
+          resolvedConfigPath = configInConfigsDir;
+        }
+      }
+      const config = await parseConfig(resolvedConfigPath);
+      distributedConfig = distributeConfig(config);
+      console.log(chalk.green(`✅ Configuration loaded: ${configPath}`));
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️ Could not load config: ${error.message}`));
+    }
+  }
+
+  await handleDeveloperCommand(developerCommand, nonFlagArgs, pipelineTestingMode, runClaudePromptWithRetry, loadPrompt, devRepoPath, devWebUrl, distributedConfig);
 
   process.exit(0);
 }

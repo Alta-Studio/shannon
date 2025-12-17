@@ -19,7 +19,7 @@ import {
 import { promptConfirmation } from './prompts.js';
 
 // Developer command handlers
-export async function handleDeveloperCommand(command, args, pipelineTestingMode, runClaudePromptWithRetry, loadPrompt) {
+export async function handleDeveloperCommand(command, args, pipelineTestingMode, runClaudePromptWithRetry, loadPrompt, repoPathOverride = null, webUrlOverride = null, distributedConfig = null) {
   try {
     let session;
 
@@ -31,14 +31,19 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
 
     // Handle --validate --list (doesn't require session selection first, just needs targetRepo)
     if (command === '--validate' && args[0] === '--list') {
-      // Need session to get targetRepo
-      try {
-        const session = await selectSession();
-        await displayVulnerabilityList(session.targetRepo);
-      } catch (error) {
-        console.log(chalk.red(`❌ ${error.message}`));
-        process.exit(1);
+      // Use repoPathOverride if provided, otherwise try to get from session
+      let targetRepo = repoPathOverride;
+      if (!targetRepo) {
+        try {
+          const session = await selectSession();
+          targetRepo = session.targetRepo;
+        } catch (error) {
+          console.log(chalk.red(`❌ ${error.message}`));
+          console.log(chalk.gray('Tip: Use --repo <path> to specify the repository path'));
+          process.exit(1);
+        }
       }
+      await displayVulnerabilityList(targetRepo);
       return;
     }
 
@@ -97,6 +102,18 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
       // Validate the vulnerability ID format (will throw if invalid)
       if (args[0] !== '--list') {
         parseVulnId(args[0]);
+
+        // If we have overrides, run validation without session
+        if (repoPathOverride && webUrlOverride) {
+          const pseudoSession = {
+            id: `standalone-${Date.now()}`,
+            targetRepo: repoPathOverride,
+            webUrl: webUrlOverride,
+            repoPath: repoPathOverride
+          };
+          await runValidation(args[0], pseudoSession, runClaudePromptWithRetry, distributedConfig);
+          return;
+        }
       }
     }
 
@@ -104,7 +121,13 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
     try {
       session = await selectSession();
     } catch (error) {
+      // If we have overrides for validate, we already handled it above
+      if (command === '--validate' && repoPathOverride && webUrlOverride) {
+        // This shouldn't happen, but just in case
+        return;
+      }
       console.log(chalk.red(`❌ ${error.message}`));
+      console.log(chalk.gray('Tip: Use --repo <path> --url <url> to run without a session'));
       process.exit(1);
     }
 
@@ -154,7 +177,7 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
         break;
 
       case '--validate':
-        await runValidation(args[0], session, runClaudePromptWithRetry);
+        await runValidation(args[0], session, runClaudePromptWithRetry, distributedConfig);
         break;
 
       default:
@@ -181,8 +204,9 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
  * @param {string} vulnId - vulnerability ID (e.g., "XSS-VULN-01")
  * @param {Object} session - session object
  * @param {Function} runClaudePromptWithRetry - Claude executor function
+ * @param {Object} config - optional distributed config with auth info
  */
-async function runValidation(vulnId, session, runClaudePromptWithRetry) {
+async function runValidation(vulnId, session, runClaudePromptWithRetry, config = null) {
   console.log(chalk.cyan.bold(`\n🔍 Validating fix for: ${vulnId}\n`));
 
   // Get the vulnerability details from the queue
@@ -193,10 +217,13 @@ async function runValidation(vulnId, session, runClaudePromptWithRetry) {
   console.log(chalk.gray(`  Source: ${vuln.source || vuln.source_detail || 'Unknown'}`));
   console.log(chalk.gray(`  Confidence: ${vuln.confidence || 'Unknown'}`));
   console.log(chalk.gray(`  Original verdict: ${vuln.verdict || 'Unknown'}`));
+  if (config && config.authentication) {
+    console.log(chalk.gray(`  Auth: Using credentials from config`));
+  }
   console.log();
 
-  // Generate the focused validation prompt
-  const prompt = generateValidationPrompt(vuln, session.webUrl);
+  // Generate the focused validation prompt (with auth if config provided)
+  const prompt = generateValidationPrompt(vuln, session.webUrl, config);
 
   console.log(chalk.blue('Starting validation agent...'));
   console.log(chalk.gray('This will test ONLY this specific vulnerability against the current code.\n'));

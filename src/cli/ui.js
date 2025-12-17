@@ -39,6 +39,7 @@ export function showHelp() {
   console.log('  --rerun              Rollback and rerun specific agent');
   console.log('  --validate <ID>      Validate a fix for a specific vulnerability (e.g., XSS-VULN-01)');
   console.log('  --validate --list    List all vulnerability IDs available for validation');
+  console.log('                       Use --run-id <id> to specify which run to read from (defaults to latest)');
   console.log('  --status             Show current session status and progress');
   console.log('  --list-agents        List all available agents and phases');
   console.log('  --cleanup            Delete all sessions or specific session by ID\n');
