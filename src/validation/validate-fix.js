@@ -42,12 +42,30 @@ export function parseVulnId(vulnId) {
 }
 
 /**
+ * Get the deliverables directory path, preferring 'latest' symlink if it exists
+ * @param {string} sourceDir - target repository path
+ * @returns {Promise<string>}
+ */
+async function getDeliverablesPath(sourceDir) {
+  const latestPath = path.join(sourceDir, 'deliverables', 'latest');
+  const flatPath = path.join(sourceDir, 'deliverables');
+
+  // Check if 'latest' symlink exists (new timestamped structure)
+  if (await fs.pathExists(latestPath)) {
+    return latestPath;
+  }
+
+  // Fall back to flat structure for backwards compatibility
+  return flatPath;
+}
+
+/**
  * Get the queue file path for a vulnerability type
  * @param {string} vulnType - e.g., "xss"
  * @param {string} sourceDir - target repository path
- * @returns {string}
+ * @returns {Promise<string>}
  */
-export function getQueueFilePath(vulnType, sourceDir) {
+export async function getQueueFilePath(vulnType, sourceDir) {
   const mappedType = VULN_TYPE_MAP[vulnType.toLowerCase()];
   if (!mappedType) {
     throw new PentestError(
@@ -57,7 +75,8 @@ export function getQueueFilePath(vulnType, sourceDir) {
       { vulnType, validTypes: Object.keys(VULN_TYPE_MAP) }
     );
   }
-  return path.join(sourceDir, 'deliverables', `${mappedType}_exploitation_queue.json`);
+  const deliverablesPath = await getDeliverablesPath(sourceDir);
+  return path.join(deliverablesPath, `${mappedType}_exploitation_queue.json`);
 }
 
 /**
@@ -68,7 +87,7 @@ export function getQueueFilePath(vulnType, sourceDir) {
  */
 export async function getVulnerabilityFromQueue(vulnId, sourceDir) {
   const { type, id } = parseVulnId(vulnId);
-  const queuePath = getQueueFilePath(type, sourceDir);
+  const queuePath = await getQueueFilePath(type, sourceDir);
 
   if (!await fs.pathExists(queuePath)) {
     throw new PentestError(
@@ -110,7 +129,7 @@ export async function getVulnerabilityFromQueue(vulnId, sourceDir) {
  * @returns {Promise<Array<{id: string, type: string, description: string}>>}
  */
 export async function listAllVulnerabilities(sourceDir) {
-  const deliverablesDir = path.join(sourceDir, 'deliverables');
+  const deliverablesDir = await getDeliverablesPath(sourceDir);
 
   if (!await fs.pathExists(deliverablesDir)) {
     console.log(chalk.yellow('No deliverables directory found. Run vulnerability analysis first.'));
@@ -120,7 +139,7 @@ export async function listAllVulnerabilities(sourceDir) {
   const allVulns = [];
 
   for (const vulnType of Object.keys(VULN_TYPE_MAP)) {
-    const queuePath = getQueueFilePath(vulnType, sourceDir);
+    const queuePath = await getQueueFilePath(vulnType, sourceDir);
 
     if (await fs.pathExists(queuePath)) {
       try {
