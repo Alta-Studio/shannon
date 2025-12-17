@@ -223,32 +223,54 @@ export function generateValidationPrompt(vuln, webUrl, config = null) {
   let authSection = '';
   if (config && config.authentication) {
     const auth = config.authentication;
+
+    // Build login URL - use webUrl base if config has docker-specific URL
+    let loginUrl = auth.login_url || `${webUrl}/login`;
+    if (loginUrl.includes('host.docker.internal')) {
+      // Replace docker host with actual webUrl host
+      const webUrlObj = new URL(webUrl);
+      loginUrl = loginUrl.replace(/host\.docker\.internal(:\d+)?/, webUrlObj.host);
+    }
+
     authSection = `
 ## Authentication
 
-You MUST authenticate before testing. Use these credentials:
+**CRITICAL: You MUST authenticate FIRST before testing this vulnerability.**
+
+### Step 1: Login to the Application
+
+**Login URL**: ${loginUrl}
+
+**Credentials**:
+- Email: \`${auth.credentials.username}\`
+- Password: \`${auth.credentials.password}\`
 `;
-    if (auth.test_credentials) {
-      authSection += `- **Username/Email**: ${auth.test_credentials.username || auth.test_credentials.email}
-- **Password**: ${auth.test_credentials.password}
-`;
-    }
-    if (auth.login_url) {
-      authSection += `- **Login URL**: ${auth.login_url}
-`;
-    }
-    if (auth.login_flow_instructions) {
+
+    if (auth.credentials.totp_secret) {
       authSection += `
-### Login Instructions
-${auth.login_flow_instructions}
+**MFA**: If prompted for a verification code, use the \`generate_totp\` MCP tool.
 `;
     }
-    if (auth.totp_secret) {
+
+    if (auth.login_flow && auth.login_flow.length > 0) {
       authSection += `
-### MFA/TOTP
-If prompted for MFA, use the \`generate_totp\` tool to generate a one-time code.
+**Login Steps**:
 `;
+      auth.login_flow.forEach((step, i) => {
+        // Replace $username and $password placeholders
+        let expandedStep = step
+          .replace(/\$username/g, auth.credentials.username)
+          .replace(/\$password/g, auth.credentials.password);
+        authSection += `${i + 1}. ${expandedStep}\n`;
+      });
     }
+
+    authSection += `
+### Step 2: Verify Login Success
+After logging in, verify you are authenticated before proceeding to test the vulnerability.
+
+---
+`;
   }
 
   return `# Vulnerability Fix Validation
