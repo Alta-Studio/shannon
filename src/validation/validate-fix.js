@@ -7,6 +7,7 @@
 import { fs, path } from 'zx';
 import chalk from 'chalk';
 import { PentestError } from '../error-handling.js';
+import { buildLoginInstructions } from '../prompts/prompt-manager.js';
 
 // Map vulnerability type prefixes to queue file names
 const VULN_TYPE_MAP = {
@@ -216,65 +217,39 @@ export async function displayVulnerabilityList(sourceDir) {
  * @param {Object} vuln - vulnerability object from queue
  * @param {string} webUrl - target web URL
  * @param {Object} config - optional distributed config with auth info
- * @returns {string} prompt text
+ * @returns {Promise<string>} prompt text
  */
-export function generateValidationPrompt(vuln, webUrl, config = null) {
-  // Build authentication section if config provided
+export async function generateValidationPrompt(vuln, webUrl, config = null) {
+  // Build authentication section using shared login instructions
   let authSection = '';
   if (config && config.authentication) {
-    const auth = config.authentication;
+    try {
+      // Fix login URL if it uses docker host
+      const auth = { ...config.authentication };
+      if (auth.login_url && auth.login_url.includes('host.docker.internal')) {
+        const webUrlObj = new URL(webUrl);
+        auth.login_url = auth.login_url.replace(/host\.docker\.internal(:\d+)?/, webUrlObj.host);
+      }
 
-    // Build login URL - use webUrl base if config has docker-specific URL
-    let loginUrl = auth.login_url || `${webUrl}/login`;
-    if (loginUrl.includes('host.docker.internal')) {
-      // Replace docker host with actual webUrl host
-      const webUrlObj = new URL(webUrl);
-      loginUrl = loginUrl.replace(/host\.docker\.internal(:\d+)?/, webUrlObj.host);
-    }
+      // Use the same buildLoginInstructions used by other prompts
+      const loginInstructions = await buildLoginInstructions(auth);
+      authSection = `
+## Authentication - REQUIRED BEFORE TESTING
 
-    authSection = `
-## Authentication
+**CRITICAL: You MUST authenticate FIRST using Playwright before testing this vulnerability.**
+**DO NOT search for credentials in .env files. Use the credentials provided below.**
 
-**CRITICAL: You MUST authenticate FIRST before testing this vulnerability.**
-
-### Step 1: Login to the Application
-
-**Login URL**: ${loginUrl}
-
-**Credentials**:
-- Email: \`${auth.credentials.username}\`
-- Password: \`${auth.credentials.password}\`
-`;
-
-    if (auth.credentials.totp_secret) {
-      authSection += `
-**MFA**: If prompted for a verification code, use the \`generate_totp\` MCP tool.
-`;
-    }
-
-    if (auth.login_flow && auth.login_flow.length > 0) {
-      authSection += `
-**Login Steps**:
-`;
-      auth.login_flow.forEach((step, i) => {
-        // Replace $username and $password placeholders
-        let expandedStep = step
-          .replace(/\$username/g, auth.credentials.username)
-          .replace(/\$password/g, auth.credentials.password);
-        authSection += `${i + 1}. ${expandedStep}\n`;
-      });
-    }
-
-    authSection += `
-### Step 2: Verify Login Success
-After logging in, verify you are authenticated before proceeding to test the vulnerability.
+${loginInstructions}
 
 ---
 `;
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️ Could not build login instructions: ${error.message}`));
+    }
   }
 
   return `# Vulnerability Fix Validation
-
+${authSection}
 ## Objective
 You are validating whether a SPECIFIC vulnerability has been fixed. Your ONLY task is to test this ONE vulnerability and determine if it still exists.
 
@@ -282,7 +257,7 @@ You are validating whether a SPECIFIC vulnerability has been fixed. Your ONLY ta
 - **Web URL**: ${webUrl}
 - **Vulnerability ID**: ${vuln.ID}
 - **Type**: ${vuln.vulnerability_type || vuln._type}
-${authSection}
+
 ## Vulnerability Details
 \`\`\`json
 ${JSON.stringify(vuln, null, 2)}

@@ -223,7 +223,7 @@ async function runValidation(vulnId, session, runClaudePromptWithRetry, config =
   console.log();
 
   // Generate the focused validation prompt (with auth if config provided)
-  const prompt = generateValidationPrompt(vuln, session.webUrl, config);
+  const prompt = await generateValidationPrompt(vuln, session.webUrl, config);
 
   console.log(chalk.blue('Starting validation agent...'));
   console.log(chalk.gray('This will test ONLY this specific vulnerability against the current code.\n'));

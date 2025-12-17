@@ -10,7 +10,7 @@ import { PentestError, handlePromptError } from '../error-handling.js';
 import { MCP_AGENT_MAPPING } from '../constants.js';
 
 // Pure function: Build complete login instructions from config
-async function buildLoginInstructions(authentication) {
+export async function buildLoginInstructions(authentication) {
   try {
     // Load the login instructions template
     const loginInstructionsPath = path.join(import.meta.dirname, '..', '..', 'prompts', 'shared', 'login-instructions.txt');
