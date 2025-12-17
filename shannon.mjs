@@ -374,7 +374,7 @@ let disableLoader = false;
 let noGitCommits = false;
 const nonFlagArgs = [];
 let developerCommand = null;
-const developerCommands = ['--run-phase', '--run-all', '--rollback-to', '--rerun', '--status', '--list-agents', '--cleanup'];
+const developerCommands = ['--run-phase', '--run-all', '--rollback-to', '--rerun', '--status', '--list-agents', '--cleanup', '--validate'];
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--config') {

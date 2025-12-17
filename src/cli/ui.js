@@ -36,6 +36,8 @@ export function showHelp() {
   console.log('  --run-all            Run all remaining agents to completion (parallel execution)');
   console.log('  --rollback-to        Rollback git workspace to agent checkpoint');
   console.log('  --rerun              Rollback and rerun specific agent');
+  console.log('  --validate <ID>      Validate a fix for a specific vulnerability (e.g., XSS-VULN-01)');
+  console.log('  --validate --list    List all vulnerability IDs available for validation');
   console.log('  --status             Show current session status and progress');
   console.log('  --list-agents        List all available agents and phases');
   console.log('  --cleanup            Delete all sessions or specific session by ID\n');
@@ -51,6 +53,8 @@ export function showHelp() {
   console.log('  ./shannon.mjs --run-phase exploitation    # Run entire phase');
   console.log('  ./shannon.mjs --run-all                   # Run all remaining agents');
   console.log('  ./shannon.mjs --rerun xss-vuln           # Fix and rerun failed agent');
+  console.log('  ./shannon.mjs --validate --list          # List all vulnerability IDs');
+  console.log('  ./shannon.mjs --validate XSS-VULN-01     # Validate fix for specific vuln');
   console.log('  ./shannon.mjs --cleanup                  # Delete all sessions');
   console.log('  ./shannon.mjs --cleanup <session-id>    # Delete specific session\n');
 

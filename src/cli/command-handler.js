@@ -13,6 +13,9 @@ import {
   runPhase, runAll, rollbackTo, rerunAgent, displayStatus, listAgents
 } from '../checkpoint-manager.js';
 import { logError, PentestError } from '../error-handling.js';
+import {
+  parseVulnId, getVulnerabilityFromQueue, displayVulnerabilityList, generateValidationPrompt
+} from '../validation/validate-fix.js';
 import { promptConfirmation } from './prompts.js';
 
 // Developer command handlers
@@ -23,6 +26,19 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
     // Commands that don't require session selection
     if (command === '--list-agents') {
       listAgents();
+      return;
+    }
+
+    // Handle --validate --list (doesn't require session selection first, just needs targetRepo)
+    if (command === '--validate' && args[0] === '--list') {
+      // Need session to get targetRepo
+      try {
+        const session = await selectSession();
+        await displayVulnerabilityList(session.targetRepo);
+      } catch (error) {
+        console.log(chalk.red(`❌ ${error.message}`));
+        process.exit(1);
+      }
       return;
     }
 
@@ -68,6 +84,20 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
         process.exit(1);
       }
       validateAgent(args[0]); // This will throw PentestError if invalid
+    }
+
+    if (command === '--validate') {
+      if (!args[0]) {
+        console.log(chalk.red('❌ --validate requires a vulnerability ID or --list'));
+        console.log(chalk.gray('Usage: ./shannon.mjs --validate <VULN-ID>'));
+        console.log(chalk.gray('       ./shannon.mjs --validate --list'));
+        console.log(chalk.gray('Example: ./shannon.mjs --validate XSS-VULN-01'));
+        process.exit(1);
+      }
+      // Validate the vulnerability ID format (will throw if invalid)
+      if (args[0] !== '--list') {
+        parseVulnId(args[0]);
+      }
     }
 
     // Get session for other commands
@@ -123,6 +153,10 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
         await displayStatus(session);
         break;
 
+      case '--validate':
+        await runValidation(args[0], session, runClaudePromptWithRetry);
+        break;
+
       default:
         console.log(chalk.red(`❌ Unknown developer command: ${command}`));
         console.log(chalk.gray('Use --help to see available commands'));
@@ -140,4 +174,51 @@ export async function handleDeveloperCommand(command, args, pipelineTestingMode,
     }
     process.exit(1);
   }
+}
+
+/**
+ * Run validation for a specific vulnerability
+ * @param {string} vulnId - vulnerability ID (e.g., "XSS-VULN-01")
+ * @param {Object} session - session object
+ * @param {Function} runClaudePromptWithRetry - Claude executor function
+ */
+async function runValidation(vulnId, session, runClaudePromptWithRetry) {
+  console.log(chalk.cyan.bold(`\n🔍 Validating fix for: ${vulnId}\n`));
+
+  // Get the vulnerability details from the queue
+  const vuln = await getVulnerabilityFromQueue(vulnId, session.targetRepo);
+
+  console.log(chalk.gray('Vulnerability details:'));
+  console.log(chalk.gray(`  Type: ${vuln.vulnerability_type || vuln._type}`));
+  console.log(chalk.gray(`  Source: ${vuln.source || vuln.source_detail || 'Unknown'}`));
+  console.log(chalk.gray(`  Confidence: ${vuln.confidence || 'Unknown'}`));
+  console.log(chalk.gray(`  Original verdict: ${vuln.verdict || 'Unknown'}`));
+  console.log();
+
+  // Generate the focused validation prompt
+  const prompt = generateValidationPrompt(vuln, session.webUrl);
+
+  console.log(chalk.blue('Starting validation agent...'));
+  console.log(chalk.gray('This will test ONLY this specific vulnerability against the current code.\n'));
+
+  // Run the validation
+  const result = await runClaudePromptWithRetry(
+    prompt,
+    session.targetRepo,
+    '*',
+    '',
+    `Validate ${vulnId}`,
+    `validate-${vulnId.toLowerCase()}`,
+    chalk.magenta,
+    { id: session.id, webUrl: session.webUrl, repoPath: session.repoPath }
+  );
+
+  if (result.success) {
+    console.log(chalk.green.bold(`\n✅ Validation completed for ${vulnId}`));
+    console.log(chalk.gray(`Check deliverables/validation_result_${vulnId}.json for detailed results`));
+  } else {
+    console.log(chalk.red.bold(`\n❌ Validation failed: ${result.error}`));
+  }
+
+  return result;
 }
